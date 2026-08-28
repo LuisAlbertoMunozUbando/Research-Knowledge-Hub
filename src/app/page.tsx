@@ -123,6 +123,15 @@ export default function Home() {
             accumulated knowledge, and ask grounded questions
             against your team&apos;s research memory.
           </p>
+
+          <div className="mt-6">
+            <a
+              href="/upload"
+              className="inline-flex rounded-xl bg-white px-5 py-3 font-medium text-black transition hover:bg-zinc-200"
+            >
+              Upload Knowledge
+            </a>
+          </div>
         </header>
 
         {error && (
