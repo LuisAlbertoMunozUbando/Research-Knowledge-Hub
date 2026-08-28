@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Research Knowledge Hub
 
-## Getting Started
+A collaborative research-memory interface for capturing, searching and asking questions over multimodal evidence processed on local GPU infrastructure.
 
-First, run the development server:
+## Current scope
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The first stable ingestion scope intentionally supports two resource families:
+
+- Images, screenshots and slides (`JPG`, `JPEG`, `PNG`, `WEBP`)
+- Born-digital research PDFs (`PDF`)
+
+Both converge into the same searchable knowledge pipeline.
+
+## Architecture
+
+```text
+Researcher
+   |
+   v
+Next.js / Vercel
+   |
+   v
+FastAPI ingestion API
+   |
+   +----------------------+----------------------+
+   |                                             |
+   v                                             v
+Image resources                               PDF resources
+   |                                             |
+Qwen2.5-VL                               PDF Inspector
+   |                                             |
+verified visual evidence                  compact PDF evidence
+   |                                             |
+   |                                      pdf-researcher
+   |                                             |
+   +----------------------+----------------------+
+                          |
+                          v
+                 normalized evidence
+                          |
+                          v
+                knowledge-synthesizer
+                          |
+                          v
+                    canonical JSON
+                          |
+             +------------+------------+
+             |            |            |
+             v            v            v
+        Google Drive     FTS5      embeddings
+                          |
+                          v
+                      searchable
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The reference backend runs on an NVIDIA DGX Spark and uses local inference, OpenClaw/NemoClaw/OpenShell components, SQLite FTS5, semantic embeddings and a persistent Google Drive evidence archive.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Frontend
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The application provides three primary workflows:
 
-## Learn More
+1. Upload images or PDFs as research packages.
+2. Search the accumulated knowledge using hybrid lexical + semantic retrieval.
+3. Ask grounded questions over the collected evidence.
 
-To learn more about Next.js, take a look at the following resources:
+The upload page accepts `image/*` and PDF files and routes them to the backend without requiring the researcher to choose an AI pipeline manually.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The frontend is designed for Vercel. The backend is reached through an HTTPS endpoint exposed from the DGX Spark through Cloudflare Tunnel.
 
-## Deploy on Vercel
+Production frontend environment variable:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```env
+KNOWLEDGE_API_URL=https://knowledge-api.albertomunoz.ai
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The intended public frontend hostname is:
+
+```text
+knowledge.albertomunoz.ai
+```
+
+## Backend
+
+Backend source and architecture documentation:
+
+https://github.com/LuisAlbertoMunozUbando/Research-Knowledge-Backend
+
+## Design principles
+
+- Preserve original evidence.
+- Keep AI interpretation separate from deterministic validation.
+- Make ingestion resumable after failures.
+- Keep local inference services private.
+- Archive provenance together with generated metadata.
+- Prefer a small set of stable modalities before expanding ingestion scope.
+
+## Status
+
+Image ingestion is operational end-to-end. PDF ingestion has also been validated end-to-end through inspection, specialized PDF research extraction, knowledge synthesis, canonicalization, Drive archival, FTS5, embeddings, database synchronization and final searchable state.
+
+## License
+
+MIT.
