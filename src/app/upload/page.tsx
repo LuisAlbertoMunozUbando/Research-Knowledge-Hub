@@ -22,43 +22,27 @@ export default function UploadPage() {
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
-  const [uploading, setUploading] =
-    useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<UploadResponse | null>(null);
+  const [error, setError] = useState("");
 
-  const [result, setResult] =
-    useState<UploadResponse | null>(null);
-
-  const [error, setError] =
-    useState("");
-
-  function selectFiles(
-    event: ChangeEvent<HTMLInputElement>
-  ) {
-    const selected = Array.from(
-      event.target.files || []
-    );
-
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files || []);
     setFiles(selected);
     setResult(null);
     setError("");
   }
 
-  async function submit(
-    event: FormEvent
-  ) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
 
     if (!title.trim()) {
-      setError(
-        "Please enter a package title."
-      );
+      setError("Please enter a package title.");
       return;
     }
 
     if (files.length === 0) {
-      setError(
-        "Please select at least one image."
-      );
+      setError("Please select at least one image or PDF.");
       return;
     }
 
@@ -67,35 +51,23 @@ export default function UploadPage() {
     setResult(null);
 
     const form = new FormData();
-
-    form.append(
-      "title",
-      title.trim()
-    );
-
-    form.append(
-      "note",
-      note.trim()
-    );
+    form.append("title", title.trim());
+    form.append("note", note.trim());
 
     for (const file of files) {
-      form.append(
-        "files",
-        file
-      );
+      form.append("files", file);
     }
 
     try {
-      const response = await fetch(
-        "/api/upload",
-        {
-          method: "POST",
-          body: form,
-        }
-      );
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: form,
+      });
 
-      const data =
-        await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
 
       if (!response.ok) {
         throw new Error(
@@ -107,11 +79,7 @@ export default function UploadPage() {
 
       setResult(data);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : String(err)
-      );
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setUploading(false);
     }
@@ -120,11 +88,7 @@ export default function UploadPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-4xl px-6 py-12">
-
-        <a
-          href="/"
-          className="text-sm text-zinc-500 hover:text-white"
-        >
+        <a href="/" className="text-sm text-zinc-500 hover:text-white">
           ← Research Knowledge Hub
         </a>
 
@@ -133,15 +97,13 @@ export default function UploadPage() {
             Multimodal Capture
           </p>
 
-          <h1 className="mt-2 text-4xl font-semibold">
-            Upload Knowledge
-          </h1>
+          <h1 className="mt-2 text-4xl font-semibold">Upload Knowledge</h1>
 
           <p className="mt-4 max-w-2xl text-zinc-400">
-            Create a research package from one or
-            more images. The DGX Spark will extract,
-            verify and structure the visible
-            knowledge.
+            Create a research package from images, screenshots, slides or PDF
+            papers. The DGX Spark routes each resource through the appropriate
+            local AI pipeline, verifies the extracted evidence and makes the
+            resulting knowledge searchable.
           </p>
         </header>
 
@@ -150,30 +112,22 @@ export default function UploadPage() {
           className="rounded-2xl border border-zinc-800 bg-zinc-900 p-7"
         >
           <label className="block">
-            <span className="text-sm text-zinc-400">
-              Package title
-            </span>
+            <span className="text-sm text-zinc-400">Package title</span>
 
             <input
               value={title}
-              onChange={(e) =>
-                setTitle(e.target.value)
-              }
-              placeholder="e.g. Own the Stack"
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Visual Pose Tracking Teleoperation"
               className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-4 outline-none focus:border-zinc-500"
             />
           </label>
 
           <label className="mt-6 block">
-            <span className="text-sm text-zinc-400">
-              Research note
-            </span>
+            <span className="text-sm text-zinc-400">Research note</span>
 
             <textarea
               value={note}
-              onChange={(e) =>
-                setNote(e.target.value)
-              }
+              onChange={(e) => setNote(e.target.value)}
               placeholder="Why is this relevant?"
               className="mt-2 min-h-24 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-4 outline-none focus:border-zinc-500"
             />
@@ -181,12 +135,12 @@ export default function UploadPage() {
 
           <label className="mt-6 block">
             <span className="text-sm text-zinc-400">
-              Images / slides
+              Images, screenshots, slides or PDFs
             </span>
 
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf,.pdf"
               multiple
               onChange={selectFiles}
               className="mt-2 block w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-950 p-6"
@@ -196,22 +150,15 @@ export default function UploadPage() {
           {files.length > 0 && (
             <div className="mt-5 rounded-xl bg-zinc-950 p-4">
               <p className="text-sm font-medium">
-                {files.length} image
-                {files.length !== 1
-                  ? "s"
-                  : ""}{" "}
-                selected
+                {files.length} resource{files.length !== 1 ? "s" : ""} selected
               </p>
 
               <div className="mt-3 space-y-1 text-sm text-zinc-500">
-                {files.map(
-                  (file, index) => (
-                    <p key={file.name}>
-                      {index + 1}.{" "}
-                      {file.name}
-                    </p>
-                  )
-                )}
+                {files.map((file, index) => (
+                  <p key={`${file.name}-${index}`}>
+                    {index + 1}. {file.name}
+                  </p>
+                ))}
               </div>
             </div>
           )}
@@ -227,9 +174,7 @@ export default function UploadPage() {
             disabled={uploading}
             className="mt-7 rounded-xl bg-white px-6 py-3 font-medium text-black disabled:opacity-50"
           >
-            {uploading
-              ? "Processing on DGX Spark..."
-              : "Upload Knowledge"}
+            {uploading ? "Processing on DGX Spark..." : "Upload Knowledge"}
           </button>
         </form>
 
@@ -239,23 +184,12 @@ export default function UploadPage() {
               Capture complete
             </p>
 
-            <h2 className="mt-2 text-2xl font-medium">
-              {result.title}
-            </h2>
+            <h2 className="mt-2 text-2xl font-medium">{result.title}</h2>
 
             <div className="mt-5 space-y-2 text-zinc-300">
-              <p>
-                Slides: {result.slides}
-              </p>
-
-              <p>
-                Stage: {result.stage}
-              </p>
-
-              <p>
-                Package token:{" "}
-                {result.package_token}
-              </p>
+              {result.files && <p>Resources: {result.files.length}</p>}
+              <p>Stage: {result.stage}</p>
+              <p>Package token: {result.package_token}</p>
             </div>
 
             {result.pipeline_stdout && (
