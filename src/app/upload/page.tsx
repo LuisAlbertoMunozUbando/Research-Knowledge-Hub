@@ -8,14 +8,27 @@ import {
 
 type UploadResponse = {
   ok?: boolean;
+  accepted?: boolean;
+  processing?: boolean;
   package_token?: string;
+  package_id?: number | null;
   title?: string;
-  slides?: number;
   files?: string[];
   stage?: string;
-  pipeline_stdout?: string;
+  current_stage?: string;
+  completed_stages?: string[];
+  failed_stage?: string | null;
+  error?: string | null;
+  message?: string;
   detail?: unknown;
 };
+
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLLS = 400;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function UploadPage() {
   const [title, setTitle] = useState("");
@@ -31,6 +44,49 @@ export default function UploadPage() {
     setFiles(selected);
     setResult(null);
     setError("");
+  }
+
+  async function pollPipeline(packageToken: string) {
+    for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
+      await sleep(POLL_INTERVAL_MS);
+
+      const response = await fetch(
+        `/api/pipeline/${encodeURIComponent(packageToken)}`,
+        { cache: "no-store" }
+      );
+
+      const contentType = response.headers.get("content-type") || "";
+      const data: UploadResponse = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : JSON.stringify(data.detail)
+        );
+      }
+
+      setResult(data);
+
+      if (data.failed_stage) {
+        throw new Error(
+          data.error || `Pipeline paused at ${data.failed_stage}`
+        );
+      }
+
+      if (
+        data.current_stage === "searchable" ||
+        data.stage === "searchable"
+      ) {
+        return data;
+      }
+    }
+
+    throw new Error(
+      "Processing is still running. The package is safe on DGX Spark; use the package token to check it again later."
+    );
   }
 
   async function submit(event: FormEvent) {
@@ -65,7 +121,7 @@ export default function UploadPage() {
       });
 
       const contentType = response.headers.get("content-type") || "";
-      const data = contentType.includes("application/json")
+      const data: UploadResponse = contentType.includes("application/json")
         ? await response.json()
         : { detail: await response.text() };
 
@@ -78,12 +134,25 @@ export default function UploadPage() {
       }
 
       setResult(data);
+
+      if (
+        data.package_token &&
+        data.stage !== "searchable" &&
+        data.current_stage !== "searchable"
+      ) {
+        await pollPipeline(data.package_token);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setUploading(false);
     }
   }
+
+  const currentStage =
+    result?.current_stage || result?.stage || "waiting";
+
+  const complete = currentStage === "searchable";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -94,16 +163,15 @@ export default function UploadPage() {
 
         <header className="mt-8 mb-10">
           <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">
-            Multimodal Capture
+            Multimodal Capture · v1
           </p>
 
           <h1 className="mt-2 text-4xl font-semibold">Upload Knowledge</h1>
 
           <p className="mt-4 max-w-2xl text-zinc-400">
-            Create a research package from images, screenshots, slides or PDF
-            papers. The DGX Spark routes each resource through the appropriate
-            local AI pipeline, verifies the extracted evidence and makes the
-            resulting knowledge searchable.
+            Upload images, screenshots, slides or PDF papers. The request is
+            accepted immediately, while the DGX Spark continues extraction,
+            synthesis, archival and indexing in the background.
           </p>
         </header>
 
@@ -179,29 +247,38 @@ export default function UploadPage() {
         </form>
 
         {result?.ok && (
-          <section className="mt-8 rounded-2xl border border-emerald-900 bg-emerald-950/20 p-7">
-            <p className="text-sm uppercase tracking-wider text-emerald-500">
-              Capture complete
+          <section
+            className={`mt-8 rounded-2xl border p-7 ${
+              complete
+                ? "border-emerald-900 bg-emerald-950/20"
+                : "border-sky-900 bg-sky-950/20"
+            }`}
+          >
+            <p
+              className={`text-sm uppercase tracking-wider ${
+                complete ? "text-emerald-500" : "text-sky-400"
+              }`}
+            >
+              {complete ? "Capture complete" : "Processing asynchronously"}
             </p>
 
-            <h2 className="mt-2 text-2xl font-medium">{result.title}</h2>
+            <h2 className="mt-2 text-2xl font-medium">
+              {result.title || title}
+            </h2>
 
             <div className="mt-5 space-y-2 text-zinc-300">
               {result.files && <p>Resources: {result.files.length}</p>}
-              <p>Stage: {result.stage}</p>
+              <p>Stage: {currentStage}</p>
               <p>Package token: {result.package_token}</p>
+              {result.package_id && <p>Package ID: {result.package_id}</p>}
             </div>
 
-            {result.pipeline_stdout && (
-              <details className="mt-6">
-                <summary className="cursor-pointer text-sm text-zinc-400">
-                  Pipeline details
-                </summary>
-
-                <pre className="mt-3 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-950 p-4 text-xs text-zinc-400">
-                  {result.pipeline_stdout}
-                </pre>
-              </details>
+            {!complete && (
+              <p className="mt-5 text-sm leading-6 text-zinc-400">
+                The browser no longer needs to keep a long request open. This
+                page is polling the persistent pipeline state while the Spark
+                continues working.
+              </p>
             )}
           </section>
         )}
