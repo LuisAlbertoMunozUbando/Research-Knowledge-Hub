@@ -14,11 +14,20 @@ type SearchResult = {
 };
 
 type AskResponse = {
+  ok?: boolean;
+  ask_token?: string;
+  status?: "queued" | "retrieving" | "generating" | "completed" | "failed";
   answer?: string;
   source_package_ids?: number[];
   insufficient_evidence?: boolean;
   sources?: SearchResult[];
+  error?: string;
+  detail?: string;
 };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,6 +38,7 @@ export default function Home() {
 
   const [searching, setSearching] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [askStatus, setAskStatus] = useState("");
 
   const [error, setError] = useState("");
 
@@ -75,6 +85,7 @@ export default function Home() {
     setAsking(true);
     setError("");
     setAnswer(null);
+    setAskStatus("Submitting...");
 
     try {
       const response = await fetch("/api/ask", {
@@ -88,7 +99,7 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const data: AskResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -96,11 +107,66 @@ export default function Home() {
         );
       }
 
-      setAnswer(data);
+      // Backward compatibility if a synchronous backend is ever used.
+      if (response.status !== 202 || !data.ask_token) {
+        setAnswer(data);
+        setAskStatus("");
+        return;
+      }
+
+      const token = data.ask_token;
+      setAskStatus("Queued...");
+
+      // Each status request is intentionally short. The expensive
+      // Nemotron inference runs on the Spark in the background.
+      for (let attempt = 0; attempt < 300; attempt += 1) {
+        await sleep(2000);
+
+        const statusResponse = await fetch(
+          `/api/ask-status/${encodeURIComponent(token)}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+
+        const statusData: AskResponse = await statusResponse.json();
+
+        if (!statusResponse.ok) {
+          throw new Error(
+            statusData.detail ||
+              statusData.error ||
+              "Could not read ask status"
+          );
+        }
+
+        if (statusData.status === "completed") {
+          setAnswer(statusData);
+          setAskStatus("");
+          return;
+        }
+
+        if (statusData.status === "failed") {
+          throw new Error(
+            statusData.error || "Grounded RAG generation failed"
+          );
+        }
+
+        if (statusData.status === "retrieving") {
+          setAskStatus("Retrieving evidence...");
+        } else if (statusData.status === "generating") {
+          setAskStatus("Reasoning over evidence...");
+        } else {
+          setAskStatus("Queued...");
+        }
+      }
+
+      throw new Error("Ask timed out while waiting for background inference");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : String(err)
       );
+      setAskStatus("");
     } finally {
       setAsking(false);
     }
@@ -189,7 +255,7 @@ export default function Home() {
               disabled={asking}
               className="mt-4 rounded-xl bg-white px-5 py-3 font-medium text-black disabled:opacity-50"
             >
-              {asking ? "Thinking..." : "Ask"}
+              {asking ? askStatus || "Thinking..." : "Ask"}
             </button>
           </div>
         </section>
