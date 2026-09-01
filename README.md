@@ -149,7 +149,12 @@ Production environment variable:
 
 ```env
 KNOWLEDGE_API_URL=https://knowledge-api.albertomunoz.ai
+NEXT_PUBLIC_KNOWLEDGE_API_URL=https://knowledge-api.albertomunoz.ai
 ```
+
+Uploads are sent directly from the browser to the FastAPI endpoint so PDF and
+image bodies do not pass through a Vercel Function. The production ingestion
+limit is **10 MiB per file** and is enforced in both the browser and backend.
 
 ---
 
