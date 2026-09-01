@@ -78,7 +78,7 @@ export default function UploadPage() {
       await sleep(POLL_INTERVAL_MS);
 
       const response = await fetch(
-        `/api/pipeline/${encodeURIComponent(packageToken)}`,
+        `${KNOWLEDGE_API_URL}/pipeline/${encodeURIComponent(packageToken)}`,
         { cache: "no-store" }
       );
 
