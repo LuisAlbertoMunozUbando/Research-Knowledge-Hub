@@ -5,6 +5,7 @@ import {
   FormEvent,
   useState,
 } from "react";
+import Link from "next/link";
 
 type UploadResponse = {
   ok?: boolean;
@@ -25,6 +26,16 @@ type UploadResponse = {
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 400;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_LABEL = "10 MB";
+const KNOWLEDGE_API_URL = (
+  process.env.NEXT_PUBLIC_KNOWLEDGE_API_URL ||
+  "https://knowledge-api.albertomunoz.ai"
+).replace(/\/+$/, "");
+
+function formatFileSize(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,6 +52,22 @@ export default function UploadPage() {
 
   function selectFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files || []);
+
+    const oversized = selected.filter(
+      (file) => file.size > MAX_FILE_SIZE_BYTES
+    );
+
+    if (oversized.length > 0) {
+      const names = oversized.map((file) => file.name).join(", ");
+      event.target.value = "";
+      setFiles([]);
+      setResult(null);
+      setError(
+        `${names} exceed${oversized.length === 1 ? "s" : ""} the ${MAX_FILE_SIZE_LABEL} limit per file.`
+      );
+      return;
+    }
+
     setFiles(selected);
     setResult(null);
     setError("");
@@ -102,6 +129,17 @@ export default function UploadPage() {
       return;
     }
 
+    const oversized = files.find(
+      (file) => file.size > MAX_FILE_SIZE_BYTES
+    );
+
+    if (oversized) {
+      setError(
+        `${oversized.name} exceeds the ${MAX_FILE_SIZE_LABEL} limit per file.`
+      );
+      return;
+    }
+
     setUploading(true);
     setError("");
     setResult(null);
@@ -115,7 +153,7 @@ export default function UploadPage() {
     }
 
     try {
-      const response = await fetch("/api/upload", {
+      const response = await fetch(`${KNOWLEDGE_API_URL}/upload`, {
         method: "POST",
         body: form,
       });
@@ -157,9 +195,9 @@ export default function UploadPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <a href="/" className="text-sm text-zinc-500 hover:text-white">
+        <Link href="/" className="text-sm text-zinc-500 hover:text-white">
           ← Research Knowledge Hub
-        </a>
+        </Link>
 
         <header className="mt-8 mb-10">
           <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">
@@ -203,7 +241,7 @@ export default function UploadPage() {
 
           <label className="mt-6 block">
             <span className="text-sm text-zinc-400">
-              Images, screenshots, slides or PDFs
+              Images, screenshots, slides or PDFs · maximum {MAX_FILE_SIZE_LABEL} per file
             </span>
 
             <input
@@ -224,7 +262,7 @@ export default function UploadPage() {
               <div className="mt-3 space-y-1 text-sm text-zinc-500">
                 {files.map((file, index) => (
                   <p key={`${file.name}-${index}`}>
-                    {index + 1}. {file.name}
+                    {index + 1}. {file.name} · {formatFileSize(file.size)}
                   </p>
                 ))}
               </div>
